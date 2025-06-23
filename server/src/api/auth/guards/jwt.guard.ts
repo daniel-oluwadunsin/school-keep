@@ -38,21 +38,11 @@ export class AuthGuard implements CanActivate {
         return true;
       }
       const req = ctx.getRequest<Request>();
-      const isWebHeader = req.headers['is_web'];
-
       let accessToken: string;
-
-      if (!isWebHeader) {
-        const token = req.headers['authorization'];
-
-        if (!token || !token.startsWith('Bearer ')) {
-          throw new UnauthorizedException('Bearer token not found');
-        }
-
-        accessToken = token.split(' ')[1];
-      } else {
-        accessToken = req.cookies['x-school-keep-bearer'];
-      }
+      const bearer = req.headers['authorization'];
+      accessToken = bearer?.startsWith('Bearer ')
+        ? bearer.slice(7)
+        : req.cookies?.['x-school-keep-bearer'];
 
       if (!accessToken)
         throw new UnauthorizedException('Access token not found');

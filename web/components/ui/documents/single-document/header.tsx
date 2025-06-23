@@ -114,7 +114,7 @@ const SingleDocumentHeader: FC<Props> = ({ document }) => {
           onClick={() =>
             showModal(
               <DownloadModal
-                url={document.url!}
+                documentId={document._id}
                 studentName={`${document?.student?.user?.firstName} ${document?.student?.user?.lastName}`}
                 fileName={document.documentName}
               />

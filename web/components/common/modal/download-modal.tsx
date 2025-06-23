@@ -5,17 +5,16 @@ import { useModal } from '@/lib/providers/contexts/modal-context';
 import Spinner from '@/components/ui/home/banner/spinner';
 import { BsDownload } from 'react-icons/bs';
 import { MdClose } from 'react-icons/md';
-import axios from 'axios';
 import { toast } from 'sonner';
 import { https } from '@/lib/configs/http.config';
 
 interface Props {
-  url: string;
+  documentId: string;
   fileName: string;
   studentName: string;
 }
 
-const DownloadModal: FC<Props> = ({ url, fileName, studentName }) => {
+const DownloadModal: FC<Props> = ({ documentId, fileName, studentName }) => {
   const name = `${studentName}_${fileName}`;
   const [totalBytes, setTotalBytes] = useState(0);
   const [downloadedBytes, setDownloadedBytes] = useState(0);
@@ -48,9 +47,7 @@ const DownloadModal: FC<Props> = ({ url, fileName, studentName }) => {
 
       abortController.current = new AbortController();
 
-      const apiUrl = `/document/download?url=${encodeURIComponent(
-        url
-      )}&fileName=${encodeURIComponent(name)}`;
+      const apiUrl = `/document/download/${documentId}`;
 
       const response = await https.get(apiUrl, {
         responseType: 'blob',
@@ -73,8 +70,7 @@ const DownloadModal: FC<Props> = ({ url, fileName, studentName }) => {
 
       const downloadUrl = window.URL.createObjectURL(blob);
       const linkTag = window.document.createElement('a');
-      linkTag.href = url;
-      linkTag.target = '_blank';
+      linkTag.href = downloadUrl;
       linkTag.setAttribute('download', name);
       document.body.appendChild(linkTag);
 
@@ -88,7 +84,7 @@ const DownloadModal: FC<Props> = ({ url, fileName, studentName }) => {
     };
 
     handleDownload();
-  }, [url]);
+  }, [documentId]);
 
   const onCancel = () => {
     if (abortController.current) {

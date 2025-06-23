@@ -20,18 +20,33 @@ import {
   MoveDocumentDto,
   UpdateDocumentDto,
 } from './dtos';
-import { Auth, IsPublic } from 'src/core/decorators/auth.decoractor';
+import { Auth } from 'src/core/decorators/auth.decoractor';
 import { Student } from '../student/schemas/student.schema';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { MULTER_DISK_STORAGE } from 'src/shared/constants';
 import { User } from '../user/schemas/user.schema';
 import { MongoIdPipe } from 'src/core/pipes/mongo-id.pipe';
 import { Response } from 'express';
+import { FileService } from 'src/shared/services/file.service';
 
 @Controller('document')
 @ApiTags('document')
 export class DocumentController {
-  constructor(private readonly documentService: DocumentService) {}
+  constructor(
+    private readonly documentService: DocumentService,
+    private readonly fileService: FileService,
+  ) {}
+
+  @Get('file/:resource_id')
+  async getLocalFile(
+    @Param('resource_id') resourceId: string,
+    @Auth() user: User,
+    @Res() res: Response,
+  ) {
+    const mediaType = await this.documentService.authorizeResource(resourceId, user);
+    const file = await this.fileService.readLocalResource(resourceId);
+    res.type(mediaType || 'application/octet-stream').send(file);
+  }
 
   @Post('folder')
   async createFolder(
@@ -151,14 +166,13 @@ export class DocumentController {
     );
   }
 
-  @IsPublic()
-  @Get('download')
+  @Get('download/:document_id')
   async downloadFile(
-    @Query('url') url: string,
-    @Query('fileName') fileName: string,
+    @Param('document_id', MongoIdPipe) documentId: string,
+    @Auth() user: User,
     @Res() res: Response,
   ) {
-    return await this.documentService.downloadFile(res, { url, fileName });
+    return await this.documentService.downloadFile(res, documentId, user);
   }
 
   @Get(':document_id')

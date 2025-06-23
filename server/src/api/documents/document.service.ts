@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -19,7 +20,6 @@ import { isEmpty } from 'lodash';
 import {
   CreateDocumentDto,
   CreateFolderDto,
-  DownloadFileDto,
   GetAllDocumentsQuery,
   UpdateDocumentDto,
 } from './dtos';
@@ -45,6 +45,21 @@ export class DocumentService {
 
     private readonly fileService: FileService,
   ) {}
+
+  async authorizeResource(resourceId: string, user: User): Promise<string> {
+    const document = await this.documentModel.findOne({ publicId: resourceId }).populate({
+      path: 'student',
+      populate: { path: 'user', select: 'school' },
+    });
+    if (!document) throw new NotFoundException('Document file not found');
+    const student = document.student as Student;
+    const studentUser = student?.user as User;
+    const allowed = user.role === Roles.Student
+      ? String(student?._id) === String(user.student?._id)
+      : String(studentUser?.school) === String(user.school?._id);
+    if (!allowed) throw new ForbiddenException('Document access denied');
+    return document.mediaType;
+  }
 
   private async getDocReference() {
     const reference = v4();
@@ -664,26 +679,26 @@ export class DocumentService {
     };
   }
 
-  async downloadFile(res: Response, body: DownloadFileDto) {
-    const { url, fileName } = body;
-
+  async downloadFile(res: Response, documentId: string, user: User) {
     try {
-      const response = await axios.get(url, { responseType: 'stream' });
-
+      const document = await this.documentModel.findById(documentId);
+      if (!document) throw new NotFoundException('Document not found');
+      await this.authorizeResource(document.publicId, user);
+      const fileName = document.documentName.replace(/[\r\n"\\]/g, '_');
       res.setHeader(
         'Content-Disposition',
         `attachment; filename="${fileName}"`,
       );
-      res.setHeader('Content-Type', 'application/octet-stream');
-      res.setHeader(
-        'Content-Length',
-        response.headers['content-length'] || '0',
-      );
-
+      res.setHeader('Content-Type', document.mediaType || 'application/octet-stream');
+      if ((process.env.STORAGE_DRIVER || 'local') === 'local') {
+        return res.send(await this.fileService.readLocalResource(document.publicId));
+      }
+      const response = await axios.get(document.url, { responseType: 'stream' });
       response.data.pipe(res);
     } catch (error) {
-      console.error('Download error:', error);
-      res.status(500).json({ error: 'Failed to download file' });
+      if (!res.headersSent) {
+        res.status(error?.status || 500).json({ error: error?.message || 'Failed to download file' });
+      }
     }
   }
 }

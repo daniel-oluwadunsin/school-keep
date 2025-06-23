@@ -1,0 +1,11 @@
+.DS_Store
+server/.env
+web/.env.local
+server/storage/
+server/coverage/
+ml/.venv/
+ml/data/
+ml/models/
+ml/indexes/
+ml/results/
+**/__pycache__/
