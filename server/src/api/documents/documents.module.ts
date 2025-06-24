@@ -7,6 +7,9 @@ import { StudentModule } from '../student/student.module';
 import { DocumentService } from './document.service';
 import { DocumentController } from './document.controller';
 import { SharedModule } from 'src/shared/shared.module';
+import { DocumentAnalysis, DocumentAnalysisSchema } from './schemas/document-analysis.schema';
+import { DocumentType, DocumentTypeSchema } from './schemas/document-type.schema';
+import { DocumentResearchService } from './document-research.service';
 
 @Module({
   imports: [
@@ -19,13 +22,15 @@ import { SharedModule } from 'src/shared/shared.module';
         name: Folder.name,
         schema: FolderSchema,
       },
+      { name: DocumentAnalysis.name, schema: DocumentAnalysisSchema },
+      { name: DocumentType.name, schema: DocumentTypeSchema },
     ]),
     forwardRef(() => SchoolModule),
     forwardRef(() => StudentModule),
     forwardRef(() => SharedModule),
   ],
   controllers: [DocumentController],
-  providers: [DocumentService],
-  exports: [MongooseModule, DocumentService],
+  providers: [DocumentService, DocumentResearchService],
+  exports: [MongooseModule, DocumentService, DocumentResearchService],
 })
 export class DocumentModule {}

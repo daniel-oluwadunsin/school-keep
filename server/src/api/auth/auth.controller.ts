@@ -16,6 +16,16 @@ import { Auth, IsPublic } from 'src/core/decorators/auth.decoractor';
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
+  private get webCookieOptions() {
+    const production = process.env.NODE_ENV === 'production';
+    return {
+      secure: production,
+      sameSite: (production ? 'none' : 'lax') as 'none' | 'lax',
+      httpOnly: true,
+      partitioned: production,
+    };
+  }
+
   @Post('login')
   @IsPublic()
   async signIn(@Body() loginDto: LoginDto, @Res() res: Response) {
@@ -24,10 +34,7 @@ export class AuthController {
     if (!loginDto.is_mobile) {
       const ONE_DAY = 24 * 60 * 60 * 1000;
       res.cookie('x-school-keep-bearer', data.meta.accessToken, {
-        secure: true,
-        sameSite: 'none',
-        httpOnly: true,
-        partitioned: true,
+        ...this.webCookieOptions,
         maxAge: loginDto?.remember_me ? 7 * ONE_DAY : ONE_DAY,
       });
 
@@ -82,10 +89,7 @@ export class AuthController {
     const data = await this.authService.webLogOut(accessToken);
 
     res.cookie('x-school-keep-bearer', '', {
-      secure: true,
-      sameSite: 'none',
-      httpOnly: true,
-      partitioned: true,
+      ...this.webCookieOptions,
       maxAge: 0,
     });
 

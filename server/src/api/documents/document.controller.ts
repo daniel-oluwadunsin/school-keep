@@ -9,6 +9,7 @@ import {
   Query,
   Res,
   UploadedFile,
+  UploadedFiles,
   UseInterceptors,
 } from '@nestjs/common';
 import { ApiConsumes, ApiQuery, ApiTags } from '@nestjs/swagger';
@@ -20,14 +21,16 @@ import {
   MoveDocumentDto,
   UpdateDocumentDto,
 } from './dtos';
-import { Auth } from 'src/core/decorators/auth.decoractor';
+import { Auth, RolesDec } from 'src/core/decorators/auth.decoractor';
 import { Student } from '../student/schemas/student.schema';
-import { FileInterceptor } from '@nestjs/platform-express';
+import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { MULTER_DISK_STORAGE } from 'src/shared/constants';
 import { User } from '../user/schemas/user.schema';
 import { MongoIdPipe } from 'src/core/pipes/mongo-id.pipe';
 import { Response } from 'express';
 import { FileService } from 'src/shared/services/file.service';
+import { DocumentResearchService } from './document-research.service';
+import { Roles } from '../user/enums';
 
 @Controller('document')
 @ApiTags('document')
@@ -35,7 +38,76 @@ export class DocumentController {
   constructor(
     private readonly documentService: DocumentService,
     private readonly fileService: FileService,
+    private readonly researchService: DocumentResearchService,
   ) {}
+
+  @Get('search')
+  async search(
+    @Auth() user: User,
+    @Query('q') query: string,
+    @Query('mode') mode: 'keyword' | 'semantic' | 'visual' | 'hybrid' = 'hybrid',
+    @Query('limit') limit = '20',
+  ) {
+    return this.researchService.search(user, query, mode, Math.min(100, Math.max(1, Number(limit) || 20)));
+  }
+
+  @RolesDec([Roles.Admin])
+  @Post('imports')
+  @UseInterceptors(FilesInterceptor('files', 50, { storage: MULTER_DISK_STORAGE }))
+  async importDocuments(@UploadedFiles() files: Express.Multer.File[], @Auth() user: User) {
+    return this.documentService.importDocuments(files, user);
+  }
+
+  @RolesDec([Roles.Admin])
+  @Post('backfill')
+  async backfill(@Auth() user: User) {
+    return { data: await this.researchService.backfill(user), success: true };
+  }
+
+  @RolesDec([Roles.Admin])
+  @Get('review')
+  async reviewQueue(@Auth() user: User) {
+    return { data: await this.researchService.listReview(user), success: true };
+  }
+
+  @Get('types')
+  async documentTypes(@Auth() user: User) {
+    return { data: await this.researchService.listTypes(user), success: true };
+  }
+
+  @RolesDec([Roles.Admin])
+  @Get('training-export')
+  async trainingExport(@Auth() user: User) {
+    return { data: await this.researchService.exportTrainingData(user), success: true };
+  }
+
+  @RolesDec([Roles.Admin])
+  @Post('types')
+  async createDocumentType(@Auth() user: User, @Body('name') name: string) {
+    return { data: await this.researchService.createType(user, name), success: true };
+  }
+
+  @Get(':document_id/analysis')
+  async getAnalysis(@Param('document_id', MongoIdPipe) documentId: string, @Auth() user: User) {
+    return { data: await this.researchService.getAnalysis(documentId, user), success: true };
+  }
+
+  @RolesDec([Roles.Admin])
+  @Post(':document_id/review')
+  async reviewAnalysis(
+    @Param('document_id', MongoIdPipe) documentId: string,
+    @Auth() user: User,
+    @Body() body: { studentId?: string; documentType?: string },
+  ) {
+    return { data: await this.researchService.review(documentId, user, body), success: true };
+  }
+
+  @RolesDec([Roles.Admin])
+  @Post(':document_id/reprocess')
+  async reprocess(@Param('document_id', MongoIdPipe) documentId: string, @Auth() user: User) {
+    await this.researchService.getAnalysis(documentId, user);
+    return this.researchService.enqueue(documentId);
+  }
 
   @Get('file/:resource_id')
   async getLocalFile(
@@ -59,25 +131,27 @@ export class DocumentController {
   @Get('folder')
   @ApiQuery({ name: 'studentId', required: false })
   async getFolders(
-    @Auth('student') student: Student,
+    @Auth() user: User,
     @Query('studentId') studentId?: string,
   ) {
     return await this.documentService.getStudentFolders(
-      student?._id || studentId,
+      user.student?._id || studentId,
+      user,
     );
   }
 
   @Delete('folder/:folder_id')
-  async deleteFolder(@Param('folder_id') folderId: string) {
-    return await this.documentService.deleteFolder(folderId);
+  async deleteFolder(@Param('folder_id') folderId: string, @Auth() user: User) {
+    return await this.documentService.deleteFolder(folderId, user);
   }
 
   @Put('folder/:folder_id')
   async updateFolder(
     @Param('folder_id') folderId: string,
     @Body() body: CreateFolderDto,
+    @Auth() user: User,
   ) {
-    return await this.documentService.updateFolder(body, folderId);
+    return await this.documentService.updateFolder(body, folderId, user);
   }
 
   @Post()
@@ -92,8 +166,7 @@ export class DocumentController {
 
     return await this.documentService.createDocument(
       body,
-      user._id,
-      user?.student?._id,
+      user,
     );
   }
 
@@ -110,7 +183,7 @@ export class DocumentController {
       body.file = file;
     }
 
-    return await this.documentService.updateDocument(body, reference, user._id);
+    return await this.documentService.updateDocument(body, reference, user._id, user);
   }
 
   @Get('folder/:folder_id/documents')
@@ -125,18 +198,20 @@ export class DocumentController {
   }
 
   @Delete(':document_id')
-  async deleteDocument(@Param('document_id', MongoIdPipe) documentId: string) {
-    return await this.documentService.deleteDocument(documentId);
+  async deleteDocument(@Param('document_id', MongoIdPipe) documentId: string, @Auth() user: User) {
+    return await this.documentService.deleteDocument(documentId, user);
   }
 
   @Post(':document_id/move')
   async moveDocumentFolder(
     @Param('document_id', MongoIdPipe) documentId: string,
     @Body() moveDocumentDto: MoveDocumentDto,
+    @Auth() user: User,
   ) {
     return await this.documentService.moveDocumentFolder(
       documentId,
       moveDocumentDto.folder_id,
+      user,
     );
   }
 

@@ -30,6 +30,8 @@ import { User } from '../user/schemas/user.schema';
 import { Roles } from '../user/enums';
 import axios from 'axios';
 import { Response } from 'express';
+import { DocumentResearchService } from './document-research.service';
+import { unlink } from 'fs/promises';
 
 @Injectable()
 export class DocumentService {
@@ -44,6 +46,7 @@ export class DocumentService {
     private readonly studentModel: Model<Student>,
 
     private readonly fileService: FileService,
+    private readonly researchService: DocumentResearchService,
   ) {}
 
   async authorizeResource(resourceId: string, user: User): Promise<string> {
@@ -54,11 +57,27 @@ export class DocumentService {
     if (!document) throw new NotFoundException('Document file not found');
     const student = document.student as Student;
     const studentUser = student?.user as User;
+    const schoolId = document.school
+      ? String((document.school as any)?._id || document.school)
+      : String((studentUser?.school as any)?._id || studentUser?.school);
     const allowed = user.role === Roles.Student
       ? String(student?._id) === String(user.student?._id)
-      : String(studentUser?.school) === String(user.school?._id);
+      : schoolId === String(user.school?._id || user.school);
     if (!allowed) throw new ForbiddenException('Document access denied');
     return document.mediaType;
+  }
+
+  private async authorizeStudent(studentId: string, user: User) {
+    if (user.role === Roles.Student) {
+      if (String(user.student?._id || user.student) !== String(studentId)) throw new ForbiddenException();
+      return;
+    }
+    const student = await this.studentModel.findById(studentId).populate('user', 'school');
+    if (!student) throw new NotFoundException('Student not found');
+    const school = (student.user as User)?.school;
+    if (String((school as any)?._id || school) !== String(user.school?._id || user.school)) {
+      throw new ForbiddenException();
+    }
   }
 
   private async getDocReference() {
@@ -116,7 +135,8 @@ export class DocumentService {
     };
   }
 
-  async getStudentFolders(studentId: string) {
+  async getStudentFolders(studentId: string, user?: User) {
+    if (user) await this.authorizeStudent(studentId, user);
     const data = await this.folderModel
       .find({
         student: new Types.ObjectId(studentId),
@@ -130,10 +150,11 @@ export class DocumentService {
     };
   }
 
-  async deleteFolder(folderId: string) {
+  async deleteFolder(folderId: string, user: User) {
     const data = await this.folderModel.findById(folderId);
 
     if (!data) throw new NotFoundException('Folder not found');
+    await this.authorizeStudent(String(data.student), user);
     if (!data.isCustom)
       throw new BadRequestException('Only non-custom folders can be deleted');
 
@@ -161,6 +182,8 @@ export class DocumentService {
       },
     });
 
+    await Promise.all(ids.map((id) => this.researchService.remove(id)));
+
     await Promise.all(
       uniquePublicIds.map(async (publicId) =>
         this.fileService.deleteResource(publicId),
@@ -173,10 +196,11 @@ export class DocumentService {
     };
   }
 
-  async updateFolder(updateFolderDto: CreateFolderDto, folderId: string) {
+  async updateFolder(updateFolderDto: CreateFolderDto, folderId: string, user: User) {
     const folder = await this.folderModel.findById(folderId);
 
     if (!folder) throw new NotFoundException('Folder not found');
+    await this.authorizeStudent(String(folder.student), user);
     if (!folder.isCustom)
       throw new BadRequestException('Only non-custom folders can be edited');
 
@@ -190,11 +214,13 @@ export class DocumentService {
 
   async createDocument(
     documentDto: CreateDocumentDto,
-    userId: string,
-    studentId?: string,
+    user: User,
   ) {
     const folder = await this.folderModel.findById(documentDto.folder);
     if (!folder) throw new NotFoundException('Oops! folder not found');
+    const studentId = String(user.student?._id || documentDto.studentId);
+    await this.authorizeStudent(studentId, user);
+    if (String(folder.student) !== studentId) throw new BadRequestException('Folder does not belong to student');
 
     const { url, public_id } = await this.fileService.uploadResource(
       documentDto.file.path,
@@ -210,11 +236,14 @@ export class DocumentService {
       publicId: public_id,
       version: 1,
       reference,
-      uploadedBy: new Types.ObjectId(userId),
-      student: new Types.ObjectId(studentId ?? documentDto.studentId),
+      uploadedBy: new Types.ObjectId(user._id),
+      student: new Types.ObjectId(studentId),
+      school: user.school?._id || user.school,
       mediaType:
         mime.lookup(documentDto.file.path) || documentDto.file.mimetype,
     });
+
+    void this.researchService.enqueue(data._id).catch(() => {});
 
     return {
       message: 'Document created',
@@ -223,8 +252,46 @@ export class DocumentService {
     };
   }
 
+  async importDocuments(files: Express.Multer.File[], user: User) {
+    if (!files?.length) throw new BadRequestException('No files uploaded');
+    const accepted = new Set(['application/pdf', 'image/png', 'image/jpeg', 'image/tiff']);
+    const imported = [];
+    for (const file of files) {
+      if (!accepted.has(file.mimetype) || file.size > 30 * 1024 * 1024) {
+        await unlink(file.path).catch(() => {});
+        throw new BadRequestException(`Unsupported file: ${file.originalname}`);
+      }
+      const { url, public_id } = await this.fileService.uploadResource(file.path, true);
+      const data = await this.documentModel.create({
+        documentName: file.originalname,
+        reference: await this.getDocReference(),
+        version: 1,
+        mediaType: file.mimetype,
+        url,
+        publicId: public_id,
+        school: user.school?._id || user.school,
+        uploadedBy: user._id,
+      });
+      imported.push({ documentId: data._id, ...(await this.researchService.enqueue(data._id)) });
+    }
+    return { data: imported, success: true, message: 'Documents queued for processing' };
+  }
+
   async getDocuments(query?: GetAllDocumentsQuery, user?: User) {
     const _query: FilterQuery<Document> = {};
+    const accessMatch: FilterQuery<Document> = {};
+    if (user?.role === Roles.Student) {
+      accessMatch.student = new Types.ObjectId(String(user.student?._id || user.student));
+    } else if (user?.school) {
+      const schoolId = new Types.ObjectId(String(user.school?._id || user.school));
+      const students = await this.studentModel.aggregate([
+        { $lookup: { from: 'users', localField: 'user', foreignField: '_id', as: 'user' } },
+        { $unwind: '$user' },
+        { $match: { 'user.school': schoolId } },
+        { $project: { _id: 1 } },
+      ]);
+      accessMatch.$or = [{ school: schoolId }, { student: { $in: students.map((student) => student._id) } }];
+    }
 
     if (query.folder_id) {
       _query['folder._id'] = new Types.ObjectId(query.folder_id);
@@ -272,6 +339,7 @@ export class DocumentService {
     }
 
     let pipelines: PipelineStage[] = [
+      { $match: accessMatch },
       {
         $sort: {
           reference: 1,
@@ -514,6 +582,7 @@ export class DocumentService {
     updateDocumentDto: UpdateDocumentDto,
     reference: string,
     userId: string,
+    user: User,
   ) {
     const { file, documentName } = updateDocumentDto;
 
@@ -525,6 +594,7 @@ export class DocumentService {
     const latestVersion = versions[0];
 
     if (!latestVersion) throw new NotFoundException('Document not found');
+    await this.researchService.assertAccess(latestVersion._id, user);
 
     const requestData = {
       ...latestVersion.toObject(),
@@ -553,6 +623,8 @@ export class DocumentService {
 
     const data = await this.documentModel.create(requestData);
 
+    void this.researchService.enqueue(data._id).catch(() => {});
+
     return {
       message: 'Document updated (new version created)',
       success: true,
@@ -561,6 +633,7 @@ export class DocumentService {
   }
 
   async getDocument(document_id: string, user?: User) {
+    if (user) await this.researchService.assertAccess(document_id, user);
     const populateOptions: PopulateOptions[] = [
       {
         path: 'uploadedBy',
@@ -619,10 +692,11 @@ export class DocumentService {
     };
   }
 
-  async deleteDocument(document_id: string) {
+  async deleteDocument(document_id: string, user: User) {
     const document = await this.documentModel.findById(document_id);
 
     if (!document) throw new NotFoundException('Document not found');
+    await this.researchService.assertAccess(document_id, user);
 
     const uniquePublicIds: string[] = [];
     const ids: string[] = [];
@@ -645,6 +719,7 @@ export class DocumentService {
         $in: ids,
       },
     });
+    await Promise.all(ids.map((id) => this.researchService.remove(id)));
     await Promise.all(
       uniquePublicIds.map(async (publicId) =>
         this.fileService.deleteResource(publicId),
@@ -657,12 +732,15 @@ export class DocumentService {
     };
   }
 
-  async moveDocumentFolder(document_id: string, folder_id: string) {
+  async moveDocumentFolder(document_id: string, folder_id: string, user: User) {
     const document = await this.documentModel.findById(document_id);
     if (!document) throw new NotFoundException('Document not found');
+    await this.researchService.assertAccess(document_id, user);
 
     const folder = await this.folderModel.findById(folder_id);
     if (!folder) throw new NotFoundException('Folder not found');
+    await this.authorizeStudent(String(folder.student), user);
+    if (String(folder.student) !== String(document.student)) throw new BadRequestException('Folder belongs to another student');
 
     await this.documentModel.updateMany(
       { reference: document.reference },
@@ -690,7 +768,7 @@ export class DocumentService {
         `attachment; filename="${fileName}"`,
       );
       res.setHeader('Content-Type', document.mediaType || 'application/octet-stream');
-      if ((process.env.STORAGE_DRIVER || 'local') === 'local') {
+      if (this.fileService.isLocalResource(document.publicId)) {
         return res.send(await this.fileService.readLocalResource(document.publicId));
       }
       const response = await axios.get(document.url, { responseType: 'stream' });

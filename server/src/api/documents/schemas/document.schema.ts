@@ -7,6 +7,7 @@ import {
 import { User, UserDocument } from 'src/api/user/schemas/user.schema';
 import { DBSchema, TimestampMixin } from 'src/shared/schemas/db.schema';
 import { Folder, FolderDocument } from './folders.schema';
+import { School } from 'src/api/school/schemas/school.schema';
 
 @DBSchema()
 export class Document extends TimestampMixin {
@@ -27,6 +28,9 @@ export class Document extends TimestampMixin {
 
   @Prop()
   publicId: string;
+
+  @Prop({ type: mongoose.Schema.Types.ObjectId, ref: School.name })
+  school: School;
 
   @Prop({
     type: mongoose.Schema.Types.ObjectId,

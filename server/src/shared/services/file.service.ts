@@ -2,10 +2,12 @@ import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import { v2, UploadApiOptions, UploadApiResponse } from 'cloudinary';
 import { CLOUDINARY_PROVIDER } from '../providers';
 import * as mime from 'mime-types';
-import { copyFile, mkdir, readFile, unlink } from 'fs/promises';
+import { copyFile, mkdir, readFile, unlink, writeFile } from 'fs/promises';
 import { basename, join, resolve } from 'path';
 import { randomUUID } from 'crypto';
 import { existsSync } from 'fs';
+import axios from 'axios';
+import { tmpdir } from 'os';
 
 @Injectable()
 export class FileService {
@@ -21,13 +23,36 @@ export class FileService {
     return (process.env.STORAGE_DRIVER || 'local') === 'local';
   }
 
+  isLocalResource(id: string) {
+    return /^[a-f0-9-]{36}$/.test(id) && existsSync(join(this.localRoot, id));
+  }
+
+  localResourcePath(id: string) {
+    if (!this.isLocalResource(id)) throw new BadRequestException('Local file unavailable');
+    return join(this.localRoot, id);
+  }
+
   async readLocalResource(id: string): Promise<Buffer> {
-    if (!this.localMode || !/^[a-f0-9-]{36}$/.test(id)) {
+    if (!/^[a-f0-9-]{36}$/.test(id)) {
       throw new BadRequestException('Invalid local resource');
     }
     const path = join(this.localRoot, id);
     if (!existsSync(path)) throw new BadRequestException('File not found');
     return readFile(path);
+  }
+
+  async processingResource(publicId: string, url: string) {
+    if (this.localMode && this.isLocalResource(publicId)) {
+      return { path: join(this.localRoot, publicId), cleanup: async () => {} };
+    }
+    const response = await axios.get<ArrayBuffer>(url, {
+      responseType: 'arraybuffer',
+      timeout: 30000,
+      maxContentLength: 30 * 1024 * 1024,
+    });
+    const path = join(tmpdir(), `school-keep-${randomUUID()}`);
+    await writeFile(path, Buffer.from(response.data));
+    return { path, cleanup: () => unlink(path) };
   }
 
   async uploadResource(
@@ -84,7 +109,7 @@ export class FileService {
     options: UploadApiOptions = {},
   ): Promise<void> {
     try {
-      if (this.localMode) {
+      if (this.isLocalResource(public_id)) {
         if (/^[a-f0-9-]{36}$/.test(public_id)) {
           await unlink(join(this.localRoot, basename(public_id))).catch((error) => {
             if (error.code !== 'ENOENT') throw error;
