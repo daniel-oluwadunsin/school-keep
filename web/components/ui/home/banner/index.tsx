@@ -1,6 +1,8 @@
 'use client';
 import React from 'react';
-import HomeNavigator from './navigator';
+import dynamic from 'next/dynamic';
+
+const HomeNavigator = dynamic(() => import('./navigator'), { ssr: false });
 
 const Banner = () => {
   return (

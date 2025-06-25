@@ -8,7 +8,7 @@ interface Props {
 }
 
 const Layout: FC<Props> = ({ children }) => (
-  <DashboardLayout children={children} />
+  <DashboardLayout>{children}</DashboardLayout>
 );
 
 export default Layout;

@@ -8,6 +8,7 @@ import 'package:app/shared/utils/misc.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:shimmer/shimmer.dart';
+import 'package:app/presentation/documents/pages/documents_search.dart';
 
 class DocumentsScreen extends StatefulWidget {
   const DocumentsScreen({super.key});
@@ -39,9 +40,19 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  "Folders",
-                  style: getTextTheme(context).headlineLarge,
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text('Folders', style: getTextTheme(context).headlineLarge),
+                    IconButton(
+                      tooltip: 'Search documents',
+                      icon: const Icon(Icons.search),
+                      onPressed: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (_) => const DocumentsSearchScreen())),
+                    ),
+                  ],
                 ),
                 SizedBox(height: 30),
                 Expanded(
@@ -57,7 +68,7 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                       return Visibility(
                         child: _buildFolders(),
                         replacement: _buildNoFolder(),
-                        visible: folders.length > 0,
+                        visible: folders.isNotEmpty,
                       );
                     },
                     listener: (context, state) {

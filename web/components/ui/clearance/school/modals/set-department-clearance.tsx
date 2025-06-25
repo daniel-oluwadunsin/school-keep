@@ -67,6 +67,7 @@ const SetDepartmentRequiredClearance: FC<Props> = ({ department }) => {
         <div className="flex items-center overflow-x-scroll space-x-2">
           {selected?.map((s) => (
             <ClearanceChip
+              key={s._id}
               loading={clearancePending}
               clearance={s}
               remove={(id) => {

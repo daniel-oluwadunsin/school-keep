@@ -201,6 +201,7 @@ export const getDocPreview = (document: Document, color?: string) => {
           alt={document.documentName!}
           width={200}
           height={200}
+          unoptimized={document.url.includes('/api/v1/document/file/')}
           className="w-full h-full object-cover object-center"
         />
       ) : (

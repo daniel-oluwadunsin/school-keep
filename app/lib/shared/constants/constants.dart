@@ -46,7 +46,10 @@ class AppMatchers {
 }
 
 class AppUrls {
-  static String serverBaseUrl = "http://localhost:3001/api/v1";
+  static const String serverBaseUrl = String.fromEnvironment(
+    'API_URL',
+    defaultValue: 'http://localhost:4000/api/v1',
+  );
 }
 
 enum AppTheme {

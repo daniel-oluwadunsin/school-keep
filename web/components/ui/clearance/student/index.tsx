@@ -14,7 +14,7 @@ const StudentClearancePage = () => {
 
   return (
     <section className="mt-5 space-y-5">
-      <h1 className="text-[1.5rem]">Students' Clearance Overview</h1>
+      <h1 className="text-[1.5rem]">Students&apos; Clearance Overview</h1>
       <Tabs
         tabs={[
           {

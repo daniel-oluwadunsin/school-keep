@@ -4,7 +4,7 @@ import {
   GetAllDocumentsQuery,
   UpdateDocumentDto,
 } from '../schemas/interfaces';
-import { ApiResponse, Document, Folder } from '../schemas/types';
+import { ApiResponse, Document, DocumentAnalysis, Folder, ResearchHit, ResearchMode } from '../schemas/types';
 import { errorHandler } from '../utils';
 
 const getAllDocuments = async (query: GetAllDocumentsQuery) => {
@@ -117,6 +117,50 @@ const getStudentDocuments = async (studentId: string) => {
   }
 };
 
+const search = async (q: string, mode: ResearchMode) => {
+  const response = await https.get<ApiResponse<ResearchHit[]>>('/document/search', {
+    params: { q, mode },
+  });
+  return response.data.data;
+};
+
+const importScans = async (files: File[]) => {
+  const data = new FormData();
+  files.forEach((file) => data.append('files', file));
+  const response = await https.post('/document/imports', data);
+  return response.data;
+};
+
+const getReviewQueue = async () => {
+  const response = await https.get<ApiResponse<DocumentAnalysis[]>>('/document/review');
+  return response.data.data;
+};
+
+const getAnalysis = async (documentId: string) => {
+  const response = await https.get<ApiResponse<DocumentAnalysis>>(`/document/${documentId}/analysis`);
+  return response.data.data;
+};
+
+const review = async (documentId: string, body: { studentId?: string; documentType?: string }) => {
+  const response = await https.post(`/document/${documentId}/review`, body);
+  return response.data;
+};
+
+const getTypes = async () => {
+  const response = await https.get<ApiResponse<Array<{ _id: string; name: string }>>>('/document/types');
+  return response.data.data;
+};
+
+const createType = async (name: string) => {
+  const response = await https.post('/document/types', { name });
+  return response.data;
+};
+
+const backfill = async () => {
+  const response = await https.post('/document/backfill');
+  return response.data;
+};
+
 const documentService = {
   getAllDocuments,
   getStudentFolders,
@@ -124,5 +168,13 @@ const documentService = {
   updateDocument,
   createDocument,
   getStudentDocuments,
+  search,
+  importScans,
+  getReviewQueue,
+  getAnalysis,
+  review,
+  getTypes,
+  createType,
+  backfill,
 };
 export default documentService;

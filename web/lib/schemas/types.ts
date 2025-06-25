@@ -102,6 +102,35 @@ export type Document = {
   createdAt: Date;
 };
 
+export type ResearchMode = 'keyword' | 'semantic' | 'visual' | 'hybrid';
+
+export type ResearchHit = {
+  documentId: string;
+  page: number;
+  score: number;
+  snippet: string;
+  document: Document;
+};
+
+export type DocumentAnalysis = {
+  _id: string;
+  document: Document | string;
+  status: 'queued' | 'processing' | 'ready' | 'failed';
+  error?: string;
+  matchStatus: 'none' | 'linked' | 'review';
+  matchedStudentId?: string;
+  matricNumber?: string;
+  documentType?: string;
+  typeConfidence?: number;
+  visualIndexed: boolean;
+  pages: Array<{
+    page: number;
+    text: string;
+    words: Array<{ text: string; confidence: number; box: number[] }>;
+    layout?: { fields?: Array<{ key: string; value: string; confidence: number }> };
+  }>;
+};
+
 export type Folder = {
   level: number;
   folderName: string;

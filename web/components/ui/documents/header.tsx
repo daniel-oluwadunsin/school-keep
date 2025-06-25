@@ -8,6 +8,7 @@ import { Folder } from '@/lib/schemas/types';
 import { cn } from '@/lib/utils';
 import { ArrowLeftCircleIcon, TableIcon } from 'lucide-react';
 import React, { FC, useEffect } from 'react';
+import Link from 'next/link';
 import { BiPlus } from 'react-icons/bi';
 import { CiGrid31 } from 'react-icons/ci';
 import CreateDocumentModal from './modals/create-document-modal';
@@ -57,6 +58,7 @@ const DocumentsPageHeader: FC<Props> = ({
         />
       </div>
       <div className="flex items-center justify-end space-x-3 mt-4">
+        <Link href="/dashboard/documents/review" className="rounded border px-3 py-2">Import and review</Link>
         <ViewSwitch
           view={View.grid}
           selectedView={selectedView}

@@ -1,8 +1,7 @@
 // ignore_for_file: public_member_api_docs, sort_constructors_first
 import 'package:app/configs/route/route_config.dart';
 import 'package:app/presentation/auth/routes/routes.dart';
-import 'package:app/shared/network/enums.dart' as httpEnums;
-import 'package:app/shared/network/network_toast.dart';
+import 'package:app/shared/network/enums.dart' as http_enums;
 import 'package:app/shared/utils/storage.dart';
 import 'package:dio/dio.dart';
 import 'package:go_router/go_router.dart';
@@ -10,7 +9,7 @@ import 'package:jwt_decoder/jwt_decoder.dart';
 
 class NetworkInterceptors extends Interceptor {
   bool hasAuth;
-  httpEnums.contentType contentType;
+  http_enums.contentType contentType;
 
   NetworkInterceptors({
     required this.hasAuth,
@@ -23,11 +22,11 @@ class NetworkInterceptors extends Interceptor {
     if (hasAuth) {
       final accessToken =
           await AppStorage.getString(AppStorageKeys.accessToken);
-      if (accessToken == null || accessToken.isNotEmpty) {
+      if (accessToken != null && accessToken.isNotEmpty) {
         options.headers["Authorization"] = "Bearer $accessToken";
       }
       options.headers["Content-Type"] =
-          contentType == httpEnums.contentType.formType
+          contentType == http_enums.contentType.formType
               ? "multipart/form-data"
               : "application/json";
     }

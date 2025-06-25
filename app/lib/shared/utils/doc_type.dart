@@ -5,6 +5,8 @@ import 'package:app/shared/widgets/image.dart';
 import 'package:app/shared/widgets/video_player.dart';
 import 'package:flutter/material.dart';
 import 'package:hugeicons/hugeicons.dart';
+import 'package:app/shared/constants/constants.dart';
+import 'package:app/shared/utils/storage.dart';
 
 enum DocType {
   image,
@@ -79,7 +81,10 @@ class DocTypeUtils {
     }
   }
 
-  static DocTypeIcon getDocTypeIcon({required String mimeType, required BuildContext context, double size = 20}) {
+  static DocTypeIcon getDocTypeIcon(
+      {required String mimeType,
+      required BuildContext context,
+      double size = 20}) {
     final docType = getDocTypeFromMimeType(mimeType);
 
     switch (docType) {
@@ -162,6 +167,21 @@ class DocTypeUtils {
 
     switch (docType) {
       case DocType.image:
+        if (document.url.contains('/api/v1/document/file/')) {
+          final path = Uri.parse(document.url).path.replaceFirst('/api/v1', '');
+          return FutureBuilder<String?>(
+            future: AppStorage.getString(AppStorageKeys.accessToken),
+            builder: (context, snapshot) => snapshot.hasData
+                ? Image.network(
+                    '${AppUrls.serverBaseUrl}$path',
+                    headers: {'Authorization': 'Bearer ${snapshot.data}'},
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) =>
+                        const Icon(Icons.broken_image_outlined),
+                  )
+                : const Center(child: CircularProgressIndicator()),
+          );
+        }
         return AppImage(image: document.url);
 
       case DocType.video:
