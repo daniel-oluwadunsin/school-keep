@@ -8,4 +8,6 @@ ml/data/
 ml/models/
 ml/indexes/
 ml/results/
+.local-mongo/
+.local-mongo.log
 **/__pycache__/

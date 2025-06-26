@@ -41,16 +41,23 @@ def process(request: ProcessRequest):
         raise HTTPException(404, "Input file not found")
     analyses = []
     indexed = []
+    visual_error = None
     for number, image in enumerate(pages_from_file(path, request.media_type), start=1):
         words = extract_ocr(image)
         text = "\n".join(word["text"] for word in words)
         layout = extract_layout(image, words)
-        visual = visual_embedding(image) if request.visual else None
+        visual = None
+        if request.visual and visual_error is None:
+            try:
+                visual = visual_embedding(image)
+            except Exception as error:
+                visual_error = str(error)
         indexed.append({"page": number, "text": text, "dense": dense_embedding(text), "visual": visual})
         analyses.append({"page": number, "text": text, "words": words,
                          "layout": layout, "matricCandidates": matric_candidates(words)})
     store.replace(request.document_id, request.school_id, indexed)
-    return {"pages": analyses, "visualIndexed": request.visual}
+    return {"pages": analyses, "visualIndexed": request.visual and visual_error is None,
+            "visualError": visual_error}
 
 
 @app.post("/search")
@@ -61,10 +68,12 @@ def search(request: SearchRequest):
                                dense_embedding(request.query), request.limit) if request.mode != "visual" else []
     visual = []
     if request.mode != "semantic":
-        query = visual_query(request.query)
-        for row, embedding in store.visual_candidates(request.school_id, request.allowed_ids):
-            visual.append({"documentId": row["document_id"], "page": row["page"],
-                           "score": visual_score(query, embedding), "snippet": row["text"][:240]})
+        candidates = store.visual_candidates(request.school_id, request.allowed_ids)
+        if candidates:
+            query = visual_query(request.query)
+            for row, embedding in candidates:
+                visual.append({"documentId": row["document_id"], "page": row["page"],
+                               "score": visual_score(query, embedding), "snippet": row["text"][:240]})
         visual.sort(key=lambda item: item["score"], reverse=True)
         visual = visual[:request.limit]
     if request.mode == "semantic":

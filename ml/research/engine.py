@@ -84,7 +84,7 @@ def _normalized_boxes(words, image):
 
 def extract_layout(image, words):
     if not words:
-        return {"entities": [], "classification": None}
+        return {"entities": [], "fields": [], "classification": None}
     import torch
     model, processor = layout_model()
     boxes = _normalized_boxes(words, image)
@@ -115,7 +115,19 @@ def extract_layout(image, words):
         confidence, label_id = probabilities.max(-1)
         classification = {"type": classifier.config.id2label[int(label_id)],
                           "confidence": float(confidence)}
-    return {"entities": entities, "classification": classification}
+    questions = [item for item in entities if item["label"].upper().endswith("QUESTION")]
+    answers = [item for item in entities if item["label"].upper().endswith("ANSWER")]
+    fields = []
+    for answer in answers:
+        if not questions:
+            break
+        source = min(questions, key=lambda question:
+                     abs(question["box"][1] - answer["box"][1]) * 2
+                     + abs(question["box"][2] - answer["box"][0]))
+        fields.append({"key": source["text"], "value": answer["text"],
+                       "confidence": min(source["confidence"], answer["confidence"]),
+                       "keyBox": source["box"], "valueBox": answer["box"]})
+    return {"entities": entities, "fields": fields, "classification": classification}
 
 
 def matric_candidates(words):

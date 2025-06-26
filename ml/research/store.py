@@ -5,8 +5,12 @@ import os
 import sqlite3
 from pathlib import Path
 
-import faiss
 import numpy as np
+
+try:
+    import faiss
+except ImportError:  # Small local tests can run before the optional index wheel is installed.
+    faiss = None
 
 
 def _pack(value):
@@ -61,12 +65,19 @@ class PageStore:
         if not rows:
             return []
         vectors = np.stack([_unpack(row["dense"]) for row in rows]).astype("float32")
-        faiss.normalize_L2(vectors)
         query = np.asarray(vector, dtype="float32").reshape(1, -1)
-        faiss.normalize_L2(query)
-        index = faiss.IndexFlatIP(vectors.shape[1])
-        index.add(vectors)
-        scores, positions = index.search(query, min(limit, len(rows)))
+        if faiss is not None:
+            faiss.normalize_L2(vectors)
+            faiss.normalize_L2(query)
+            index = faiss.IndexFlatIP(vectors.shape[1])
+            index.add(vectors)
+            scores, positions = index.search(query, min(limit, len(rows)))
+        else:
+            vectors /= np.maximum(np.linalg.norm(vectors, axis=1, keepdims=True), 1e-12)
+            query /= np.maximum(np.linalg.norm(query, axis=1, keepdims=True), 1e-12)
+            similarities = vectors @ query.T
+            order = np.argsort(-similarities[:, 0])[:limit]
+            scores, positions = [similarities[order, 0]], [order]
         return [{"documentId": rows[i]["document_id"], "page": rows[i]["page"],
                  "score": float(score), "snippet": rows[i]["text"][:240]}
                 for score, i in zip(scores[0], positions[0]) if i >= 0]

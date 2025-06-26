@@ -26,5 +26,12 @@ dependencies = [
 [project.optional-dependencies]
 test = ["pytest>=8,<10"]
 
+[build-system]
+requires = ["setuptools>=70"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["research", "scripts"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
