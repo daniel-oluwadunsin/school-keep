@@ -39,6 +39,7 @@ const SingleDocumentPage = () => {
           <p>Status: {analysis.status} · Student match: {analysis.matchStatus}</p>
           {analysis.documentType && <p>Type: {analysis.documentType}</p>}
           {analysis.error && <p role="alert" className="text-red-700">{analysis.error}</p>}
+          {analysis.visualError && <p role="alert" className="text-amber-700">Visual indexing: {analysis.visualError}</p>}
           <div className="mt-3 max-h-80 space-y-3 overflow-auto">
             {analysis.pages?.map((page) => <details key={page.page} className="rounded border p-3">
               <summary>Page {page.page} · OCR text</summary>

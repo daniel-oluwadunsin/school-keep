@@ -34,6 +34,10 @@ export class DocumentResearchService implements OnModuleInit {
     return process.env.ML_SERVICE_URL || 'http://127.0.0.1:8001';
   }
 
+  private supported(mediaType: string) {
+    return ['application/pdf', 'image/png', 'image/jpeg', 'image/tiff'].includes(mediaType);
+  }
+
   async onModuleInit() {
     const pending = await this.analyses.find({ status: { $in: ['queued', 'processing'] } }).select('document');
     for (const item of pending) this.schedule(String(item.document));
@@ -59,6 +63,7 @@ export class DocumentResearchService implements OnModuleInit {
   async enqueue(documentId: string) {
     const document = await this.documents.findById(documentId);
     if (!document) throw new NotFoundException('Document not found');
+    if (!this.supported(document.mediaType)) return { documentId, status: 'skipped' };
     const schoolId = await this.schoolIdFor(document);
     await this.analyses.findOneAndUpdate(
       { document: document._id },
@@ -111,6 +116,7 @@ export class DocumentResearchService implements OnModuleInit {
       }
       await this.analyses.updateOne({ document: document._id }, { $set: {
         status: 'ready', pages, visualIndexed: Boolean(response.data.visualIndexed),
+        visualError: response.data.visualError || null,
         matchStatus: match.studentId || document.student ? 'linked' : 'review',
         matchedStudentId: match.studentId || (document.student ? String(document.student) : null),
         matricNumber: match.matricNumber || null,
@@ -214,7 +220,7 @@ export class DocumentResearchService implements OnModuleInit {
       documentType: { $type: 'string' } }).populate('document', 'publicId mediaType');
     return labeled.flatMap((analysis) => {
       const document = analysis.document as Document;
-      if (!this.files.isLocalResource(document.publicId)) return [];
+      if (!document || !this.files.isLocalResource(document.publicId)) return [];
       return analysis.pages.map((page: any) => ({
         documentId: String(document._id), label: analysis.documentType,
         path: this.files.localResourcePath(document.publicId),
@@ -254,11 +260,16 @@ export class DocumentResearchService implements OnModuleInit {
       document: { $in: documents.map((d) => d._id) }, status: 'ready',
     }).select('document')).map((a) => String(a.document)));
     const outstanding = documents.filter((document) => !analyzed.has(String(document._id)));
-    for (const document of outstanding) await this.enqueue(String(document._id));
-    return { queued: outstanding.length };
+    let queued = 0;
+    for (const document of outstanding) {
+      const result = await this.enqueue(String(document._id));
+      if (result.status === 'queued') queued++;
+    }
+    return { queued };
   }
 
-  async search(user: User, query: string, mode: SearchMode, limit = 20) {
+  async search(user: User, query: string, mode: SearchMode, limit = 20,
+    folderId?: string, studentId?: string) {
     if (!query?.trim()) throw new BadRequestException('Search query required');
     if (!['keyword', 'semantic', 'visual', 'hybrid'].includes(mode)) throw new BadRequestException('Invalid mode');
     const schoolId = String(user.school?._id || user.school);
@@ -270,10 +281,15 @@ export class DocumentResearchService implements OnModuleInit {
           { $match: { 'user.school': new Types.ObjectId(schoolId) } },
           { $project: { _id: 1 } },
         ])).map((student) => student._id);
-    const documents = await this.documents.find({ $or: [
-      { school: new Types.ObjectId(schoolId) }, { student: { $in: studentIds } },
-    ] }).sort({ version: -1 });
-    const latest = [...new Map(documents.reverse().map((doc) => [doc.reference, doc])).values()];
+    const scope = user.role === Roles.Student
+      ? { student: { $in: studentIds } }
+      : { $or: [
+          { school: new Types.ObjectId(schoolId) }, { student: { $in: studentIds } },
+        ] };
+    const documents = await this.documents.find(scope).sort({ version: -1 });
+    const latest = [...new Map(documents.reverse().map((doc) => [doc.reference, doc])).values()]
+      .filter((doc) => (!folderId || String(doc.folder) === folderId)
+        && (!studentId || String(doc.student) === studentId));
     await this.documents.populate(latest, [
       { path: 'uploadedBy', select: 'firstName lastName profilePicture' },
       { path: 'folder', select: 'folderName level' },

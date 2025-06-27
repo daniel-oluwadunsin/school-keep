@@ -117,9 +117,10 @@ const getStudentDocuments = async (studentId: string) => {
   }
 };
 
-const search = async (q: string, mode: ResearchMode) => {
+const search = async (q: string, mode: ResearchMode,
+  scope?: { folderId?: string; studentId?: string }) => {
   const response = await https.get<ApiResponse<ResearchHit[]>>('/document/search', {
-    params: { q, mode },
+    params: { q, mode, ...scope },
   });
   return response.data.data;
 };

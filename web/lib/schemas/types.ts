@@ -123,6 +123,7 @@ export type DocumentAnalysis = {
   documentType?: string;
   typeConfidence?: number;
   visualIndexed: boolean;
+  visualError?: string;
   pages: Array<{
     page: number;
     text: string;

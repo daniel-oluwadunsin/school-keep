@@ -45,8 +45,8 @@ const DocumentsList: FC<Props> = ({ folderId, onClose, studentId }) => {
   });
 
   const { data: hits = [], isLoading: searching, error: searchError } = useQuery({
-    queryKey: ['document-research-search', query.search, mode],
-    queryFn: () => documentService.search(query.search!, mode),
+    queryKey: ['document-research-search', query.search, mode, folderId, studentId],
+    queryFn: () => documentService.search(query.search!, mode, { folderId, studentId }),
     enabled: Boolean(query.search?.trim()),
   });
 

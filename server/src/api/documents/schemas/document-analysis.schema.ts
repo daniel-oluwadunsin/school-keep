@@ -39,6 +39,9 @@ export class DocumentAnalysis extends TimestampMixin {
   visualIndexed: boolean;
 
   @Prop()
+  visualError?: string;
+
+  @Prop()
   reviewedBy?: string;
 }
 

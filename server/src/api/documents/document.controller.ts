@@ -47,8 +47,11 @@ export class DocumentController {
     @Query('q') query: string,
     @Query('mode') mode: 'keyword' | 'semantic' | 'visual' | 'hybrid' = 'hybrid',
     @Query('limit') limit = '20',
+    @Query('folderId') folderId?: string,
+    @Query('studentId') studentId?: string,
   ) {
-    return this.researchService.search(user, query, mode, Math.min(100, Math.max(1, Number(limit) || 20)));
+    return this.researchService.search(user, query, mode,
+      Math.min(100, Math.max(1, Number(limit) || 20)), folderId, studentId);
   }
 
   @RolesDec([Roles.Admin])

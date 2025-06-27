@@ -60,8 +60,10 @@ async function bootstrap() {
   );
   SwaggerModule.setup('/api/v1/docs', app, swaggerDocument);
 
-  const seedService = app.get(SeedService);
-  seedService.runSeeds();
+  if (process.env.SEED_ENABLED !== 'false') {
+    const seedService = app.get(SeedService);
+    await seedService.runSeeds();
+  }
 
   const configService = app.get(ConfigService);
   const port = configService.get<string>('PORT');

@@ -3,6 +3,7 @@ import * as Joi from 'joi';
 const envSchema = Joi.object({
   DATABASE_URL: Joi.string().required(),
   NODE_ENV: Joi.string().optional(),
+  SEED_ENABLED: Joi.boolean().default(true),
   PORT: Joi.string().required(),
   JWT_SECRET: Joi.string().required(),
   MAILER_USER: Joi.string().allow('').optional(),
