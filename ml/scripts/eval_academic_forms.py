@@ -15,8 +15,8 @@ from research.metrics import error_rate, field_scores, matching_scores
 FORMS = {
     "Bowen transcript request": "https://bowen.edu.ng/wp-content/uploads/2020/04/transcript-request-form.pdf",
     "UNIPORT transcript application": "https://www.uniport.edu.ng/wp-content/uploads/2024/11/APPLICATION_FORMAT.pdf",
-    "YMSU student clearance": "https://nwu.edu.ng/wordpress/wp-content/uploads/2021/12/NYSC-CLEARANCE-FORM.pdf",
-    "ABU exit clearance": "https://abu.edu.ng/wp-content/uploads/2023/09/Exit-Clearence-Form.pdf",
+    "UNINIGER student clearance": "https://uniniger.edu.ng/wp-content/uploads/2023/12/Admissions-Unit-Students-Clearance-Form.pdf",
+    "UNILAG certificate clearance": "https://spgs.unilag.edu.ng/wp-content/uploads/SPGS-Clearance-Form-for-Certificate.pdf",
 }
 
 

@@ -45,9 +45,16 @@ def main():
         model_name, num_labels=len(labels), id2label={i: label for label, i in label2id.items()},
         label2id=label2id,
     )
-    random.Random(42).shuffle(rows)
-    split = max(1, round(len(rows) * 0.2))
-    test_rows, train_rows = rows[:split], rows[split:]
+    by_label = {label: [row for row in rows if row["label"] == label] for label in labels}
+    train_rows, test_rows = [], []
+    for label, examples in by_label.items():
+        documents = list(dict.fromkeys(row["documentId"] for row in examples))
+        if len(documents) < 2:
+            raise SystemExit(f"Need at least two different documents for {label}")
+        random.Random(42).shuffle(documents)
+        test_id = documents[0]
+        test_rows.extend(row for row in examples if row["documentId"] == test_id)
+        train_rows.extend(row for row in examples if row["documentId"] != test_id)
     device = "mps" if torch.backends.mps.is_available() else "cpu"
     model.to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=1e-5)
