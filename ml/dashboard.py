@@ -40,5 +40,11 @@ if "matching" in report:
     st.warning("Matching examples use synthetic identities on academic form layouts.")
     st.json(report["matching"])
 
+if "usability" in report:
+    st.subheader("Usability responses")
+    st.metric("Overall score", f"{report['usability']['overall_percent']:.2f}%")
+    st.write("Sample target met:", report["target_met"])
+    st.bar_chart(pd.Series(report["usability"]["criterion_percent"]))
+
 st.subheader("Method")
 st.write(report.get("method", "See the benchmark script for details."))
