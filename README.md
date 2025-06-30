@@ -1,51 +1,188 @@
-# School Keep
+# School Keep — Final Year Project
 
-School Keep has a NestJS API (`server`), a Next.js admin app (`web`), a Flutter student app (`app`), and a local Python document research service (`ml`). MongoDB remains the application database. New scans are processed in the background with PaddleOCR, LayoutLMv3, Sentence-BERT/FAISS, and ColPali. Model weights, indexed pages, uploaded files, and evaluation data stay outside Git.
+### University Student Document Management and Clearance Processing System
 
-## Local setup without Docker
+> A web and mobile platform for managing student records, digitising academic documents, finding documents with natural-language search, and processing university clearance requests.
 
-Prerequisites: Node.js 20, Flutter with Dart 3.5 or newer, MongoDB, Python 3.11 or 3.12, and enough disk space for model weights. The first ML request downloads models. ColPali is large and runs best with Apple Silicon MPS or a CUDA GPU; CPU works more slowly.
+School Keep was developed as an undergraduate final year project to address paper-based student document handling and clearance workflows in Nigerian universities. The thesis, *Design and Implementation of an Online Student Document Management and Clearance Processing System*, was supervised by **Dr. Adejimi Alaba**.
+
+## Product overview
+
+School Keep provides separate interfaces for students and university administrators, backed by a shared API and document processing service. Students upload and organize academic records, search their documents, submit clearance materials, and follow request progress. Administrators manage student records and clearance requirements, import documents in batches, review extracted information, and approve or reject clearance requests.
+
+The system processes scanned PDFs and images into searchable records. It combines OCR, page layout analysis, student record matching, semantic text retrieval, and visual document retrieval. Administrators can inspect the processing output and correct student or document type assignments.
+
+## Product capabilities
+
+| Area | Capabilities |
+| --- | --- |
+| Student records | Student accounts, academic profiles, document folders, document versions, and school-specific records |
+| Document management | Upload, batch import, categorization, secure file access, reprocessing, and review of document analysis |
+| Clearance | Configurable school and department requirements, student submissions, request status, activity history, and administrator decisions |
+| Document discovery | Keyword, semantic, visual, and combined search across accessible document pages |
+| Administration | School structure, faculties, departments, administrators, students, document types, and clearance workflows |
+| Payments | Paid clearance requests with Squad transaction webhook processing |
+
+## Application architecture
+
+```mermaid
+flowchart LR
+  Student[Student] --> Mobile[Flutter student app]
+  Admin[School administrator] --> Portal[Next.js admin portal]
+  Mobile --> API[NestJS REST API]
+  Portal --> API
+
+  API --> Mongo[(MongoDB)]
+  API --> Files[Document storage adapter\nFile system or Cloudinary]
+  API --> Queue[Analysis job queue]
+  Queue --> ML[Python FastAPI processing service]
+
+  ML --> Render[PDF page rendering]
+  Render --> OCR[PaddleOCR]
+  OCR --> Layout[LayoutLMv3 layout analysis]
+  Layout --> Match[School-scoped student matching]
+  Layout --> TextEmbed[Sentence-BERT embeddings]
+  Render --> VisualEmbed[ColPali page embeddings]
+  TextEmbed --> Index[(SQLite page store and FAISS search)]
+  VisualEmbed --> Index
+
+  Mobile --> Search[Document search]
+  Portal --> Search
+  Search --> API
+  API --> Scope[Role and school access filtering]
+  Scope --> Modes[Keyword · semantic · visual · hybrid]
+  Modes --> Index
+```
+
+## Document processing
+
+1. An administrator uploads one or more PDF, PNG, JPEG, or TIFF files, or queues an existing document for processing.
+2. The API records a processing job, then the processing service renders each PDF page for analysis.
+3. PaddleOCR extracts text, confidence scores, and word coordinates from each page.
+4. LayoutLMv3 analyses the text and page geometry to identify form entities and key-value fields. A school-specific document classifier can be trained from reviewed document labels.
+5. The matching service normalizes matriculation numbers and checks for a unique match within the same school. A match requires OCR confidence of at least `0.95` and exactly one matching student record. Uncertain matches are available for administrator review.
+6. The processing service creates page-level text embeddings for semantic retrieval and visual embeddings for page-image retrieval. Analysis state and page data are persisted for search and review.
+
+Processing status, OCR text, extracted fields, classification output, student match, and visual indexing status are available to administrators from the document review interface. Administrators make the final decisions for clearance requests.
+
+## Document search
+
+Search runs through the authenticated API so results are limited to the documents available to the signed-in student or administrator.
+
+| Search mode | Implementation |
+| --- | --- |
+| Keyword | Case-insensitive matching against document names and OCR text extracted from pages |
+| Semantic | `sentence-transformers/all-MiniLM-L6-v2` query and page embeddings, ranked with FAISS inner-product similarity over normalized vectors |
+| Visual | ColPali (`vidore/colpali-v1.3`) multi-vector matching between a natural-language query and page images |
+| Hybrid | Reciprocal-rank fusion of semantic and visual retrieval results |
+
+Search results include the matching document, page number, score, and text snippet where available. Search can also be scoped to a student or folder in the admin interface.
+
+The document API includes endpoints for batch import, background reprocessing, analysis review, training-data export, and search. Interactive API documentation is available at `/api/v1/docs` when the API is running.
+
+## Clearance workflow
+
+Administrators define clearance requirements for a school and assign required clearances to departments. Students submit a clearance request and its supporting documents through the mobile application, then track its progress and activity history. Administrators review submitted materials and approve or reject each clearance, with status changes recorded in the workflow. Paid clearance requests are associated with transaction records and processed through the Squad payment webhook.
+
+## Technical stack
+
+| Component | Technologies | Responsibilities |
+| --- | --- | --- |
+| Admin portal | Next.js 14, React 18, TypeScript, TanStack Query | School administration, document import and review, student records, search, and clearance management |
+| Student app | Flutter, Dart | Student document upload and organization, document search, clearance requests, and status tracking |
+| Application API | NestJS, TypeScript, Mongoose | Authentication, role-based authorization, school and student records, document workflows, and REST endpoints |
+| Main database | MongoDB | Users, schools, students, documents, clearance records, transactions, and analysis metadata |
+| Document analysis | Python, FastAPI, PaddleOCR, LayoutLMv3 | Page rendering, OCR, layout-aware extraction, classification, and student matching inputs |
+| Text retrieval | Sentence-Transformers, FAISS | Dense text embeddings and similarity-based page retrieval |
+| Visual retrieval | ColPali, PyTorch | Page-image embeddings and visual document retrieval |
+| Page index | SQLite | Durable page text, document scope, and vector data used by the search service |
+| File storage | File system or Cloudinary | Uploaded source documents and authorized document access |
+| Payments | Squad webhook integration | Payment event handling for paid clearance requests |
+
+## Evaluation
+
+The thesis evaluation examined extracted fields and student record matching against manual annotations. It compared keyword search with Sentence-BERT retrieval using natural-language queries that did not directly match document filenames. Usability was evaluated with **50 students and 15 administrators** across document retrieval, clearance processing efficiency, and ease of use. The project reported an **overall usability rating of 88.73%**.
+
+![School Keep evaluation overview showing the reported usability rating, participant count, and evaluation areas](docs/images/evaluation-overview.png)
+
+The repository also includes repeatable evaluation tools for document retrieval, OCR, field extraction, record matching, and usability survey responses. Results can be viewed in the Streamlit evaluation dashboard.
+
+```bash
+cd ml
+.venv/bin/python -m scripts.benchmark_vidore --samples 50
+.venv/bin/python -m scripts.eval_academic_forms
+.venv/bin/python -m scripts.eval_usability path/to/responses.csv
+.venv/bin/streamlit run dashboard.py
+```
+
+The usability CSV format is `respondent_id,role,document_retrieval,clearance_processing_efficiency,ease_of_use`. Use a unique anonymous ID, `student` or `administrator`, and a 1–5 integer rating for each criterion.
+
+## Run the application
+
+### Prerequisites
+
+- Node.js 20
+- Flutter with Dart 3.5 or newer
+- MongoDB
+- Python 3.11 or 3.12
+- `uv` for Python environment and package management
+
+### Install dependencies
 
 ```bash
 cp server/.env.example server/.env
 cp web/.env.local.example web/.env.local
-cd server && npm ci && cd ..
-cd web && npm ci && cd ..
-cd ml && uv venv --python 3.11 .venv && uv pip install --python .venv/bin/python -e '.[test]' && cd ..
-cd app && flutter pub get && cd ..
-mkdir -p .local-mongo
+
+cd server && npm ci
+cd ../web && npm ci
+cd ../ml && uv venv --python 3.11 .venv
+uv pip install --python .venv/bin/python -e '.[test]'
+cd ../app && flutter pub get
 ```
 
-Set a private `JWT_SECRET` and `SCHOOL_MANAGERS_PASSWORD` in `server/.env`. `MAILER_MODE=log` prints local email events without sending them. Cloudinary is optional; `STORAGE_DRIVER=local` stores uploads under `server/storage`. To use Cloudinary, set `STORAGE_DRIVER=cloudinary` and its three credentials.
+Set `JWT_SECRET` and `SCHOOL_MANAGERS_PASSWORD` in `server/.env`. Configure `STORAGE_DRIVER` as `cloudinary` with Cloudinary credentials to use Cloudinary storage; the file system storage adapter is also available. `MAILER_MODE=log` writes email events to the server output.
 
-Start MongoDB in one terminal with `mongod --dbpath .local-mongo --bind_ip 127.0.0.1 --port 27017`. Start the apps in another terminal with `bash scripts/dev.sh`. The admin site is at `http://localhost:3000`, the API at `http://localhost:4000/api/v1`, and the Python service at `http://127.0.0.1:8001`. The API seeds school managers using the configured local password.
+### Start services
 
-For Flutter on a simulator, run `flutter run --dart-define=API_URL=http://localhost:4000/api/v1` from `app`. For the Android emulator, use `http://10.0.2.2:4000/api/v1`. A physical device needs your computer's LAN address in both `API_URL` and `PUBLIC_API_URL`.
-
-## Document workflow
-
-Admins can import multiple PDF, PNG, JPEG, or TIFF scans from **Documents → Import and review**. Uploaded and existing documents can be queued for processing there. The worker saves OCR text and coordinates, LayoutLMv3 output, a conservative student match, and search indexes per document version. Automatic linking requires a high-confidence matriculation number that uniquely matches a student in the same school. Ambiguous records enter the review queue. Clearance approval remains an admin decision.
-
-School document types are configurable. To create a starter LayoutLMv3 classifier from public Nigerian university forms, run `cd ml && .venv/bin/python -m scripts.prepare_academic_training && .venv/bin/python -m scripts.train_classifier data/academic-training-export.json`. Add the matching **Transcript Request** and **Student Clearance** types in the admin site. For school-specific training, export `GET /api/v1/document/training-export` using an admin session to a JSON file and run `train_classifier` on that file. At least two different labeled documents of each of two types are required. Restart the Python service to load a new checkpoint. Until a checkpoint exists, generic FUNSD field extraction runs and type decisions go to review.
-
-Search modes are keyword, semantic (Sentence-BERT with FAISS), visual (ColPali), and hybrid reciprocal rank fusion. Search results are restricted to documents the requester may access. The Python index is durable in `ml/indexes/pages.sqlite`; deleted documents are removed from it.
-
-## Evaluation
-
-From `ml`, run:
+Start MongoDB, then run the application services:
 
 ```bash
-.venv/bin/python -m scripts.benchmark_vidore --samples 50
-.venv/bin/python -m scripts.eval_academic_forms
-.venv/bin/streamlit run dashboard.py
+mkdir -p .school-keep-mongo
+mongod --dbpath .school-keep-mongo --bind_ip 127.0.0.1 --port 27017
+bash scripts/dev.sh
 ```
 
-The retrieval benchmark uses [ViDoRe ArxivQA](https://huggingface.co/datasets/vidore/arxivqa_test_subsampled) under CC BY-SA 4.0. The academic forms runner downloads public blank forms from [Bowen University](https://bowen.edu.ng/wp-content/uploads/2020/04/transcript-request-form.pdf), [University of Port Harcourt](https://www.uniport.edu.ng/wp-content/uploads/2024/11/APPLICATION_FORMAT.pdf), [University on the Niger](https://uniniger.edu.ng/wp-content/uploads/2023/12/Admissions-Unit-Students-Clearance-Form.pdf), and [University of Lagos](https://spgs.unilag.edu.ng/wp-content/uploads/SPGS-Clearance-Form-for-Certificate.pdf). It compares OCR with embedded PDF text, an approximate reference, and uses explicitly synthetic identities for record matching. Downloads are local and are not committed.
+The services are available at:
 
-To analyze a real usability study, prepare a CSV with `respondent_id,role,document_retrieval,clearance_processing_efficiency,ease_of_use`. Use anonymous unique IDs, `student` or `administrator` as the role, and integer ratings from 1 to 5. Run `.venv/bin/python -m scripts.eval_usability path/to/responses.csv` from `ml`. The report shows sample counts against the 50-student and 15-administrator targets, each criterion score, and an overall score. The scoring method is documented in the report and may differ from the thesis calculation.
+| Service | Address |
+| --- | --- |
+| Admin portal | `http://localhost:3000` |
+| API | `http://localhost:4000/api/v1` |
+| API documentation | `http://localhost:4000/api/v1/docs` |
+| Document processing service | `http://127.0.0.1:8001` |
 
-For manually annotated form evaluation, first read the [FUNSD research-use terms](https://guillaumejaume.github.io/FUNSD/work/) and download the dataset yourself. Run `.venv/bin/python -m scripts.eval_funsd path/to/dataset` from `ml`. The Streamlit dashboard reads JSON results in `ml/results`; it does not generate metrics on its own. No new usability study is conducted. The thesis's reported 88.73% usability figure has not been reproduced by this code.
+Run the Flutter application with an API address for the target device:
 
-## Checks
+```bash
+cd app
+flutter run --dart-define=API_URL=http://localhost:4000/api/v1
+```
 
-Run `npm run build` in `server`, `npx tsc --noEmit` in `web`, `flutter analyze` in `app`, and `.venv/bin/python -m pytest` in `ml`. A successful build does not prove model quality; use the evaluation runners and review their saved results.
+For the Android emulator, set `API_URL=http://10.0.2.2:4000/api/v1`. For a physical device, set the computer's network address in `API_URL` and `PUBLIC_API_URL`.
+
+## Repository structure
+
+```text
+app/       Flutter student application
+web/       Next.js administrator portal
+server/    NestJS REST API and MongoDB models
+ml/        Python document processing, search, and evaluation tools
+scripts/   Application startup script
+docs/      Project evaluation image
+```
+
+## Project references
+
+- Main models: PaddleOCR, Microsoft LayoutLMv3, Sentence-BERT, FAISS, and ColPali.
+- Retrieval benchmark: [ViDoRe ArxivQA dataset](https://huggingface.co/datasets/vidore/arxivqa_test_subsampled).
+- Academic forms used by the evaluation scripts: [Bowen University](https://bowen.edu.ng/wp-content/uploads/2020/04/transcript-request-form.pdf), [University of Port Harcourt](https://www.uniport.edu.ng/wp-content/uploads/2024/11/APPLICATION_FORMAT.pdf), [University on the Niger](https://uniniger.edu.ng/wp-content/uploads/2023/12/Admissions-Unit-Students-Clearance-Form.pdf), and [University of Lagos](https://spgs.unilag.edu.ng/wp-content/uploads/SPGS-Clearance-Form-for-Certificate.pdf).

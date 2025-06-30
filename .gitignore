@@ -10,4 +10,6 @@ ml/indexes/
 ml/results/
 .local-mongo/
 .local-mongo.log
+.school-keep-mongo/
+.school-keep-mongo.log
 **/__pycache__/
